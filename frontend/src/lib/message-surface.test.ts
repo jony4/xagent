@@ -25,18 +25,40 @@ describe("message surface contract", () => {
     expect(getMessageSurface("final_answer_delta", {})).toBe("stream");
   });
 
-  it("keeps questions visible but waits only when explicitly requested", () => {
+  it("keeps questions visible and preserves legacy question waiting", () => {
     const legacyQuestion = { message_type: "question", expect_response: false };
     const waitingQuestion = { message_type: "question", expect_response: true };
 
     expect(getMessageSurface("agent_message", legacyQuestion)).toBe("chat");
-    expect(expectsUserResponse("agent_message", legacyQuestion)).toBe(false);
+    expect(expectsUserResponse("agent_message", legacyQuestion)).toBe(true);
     expect(expectsUserResponse("agent_message", waitingQuestion)).toBe(true);
+    expect(
+      getMessageSurface("agent_message", {
+        expect_response: true,
+        visible: false,
+      }),
+    ).toBe("chat");
   });
 
   it("honors hidden messages before any display hint", () => {
     expect(
       getMessageSurface("agent_message", { visible: false, display: "chat" }),
     ).toBe("ignore");
+  });
+
+  it("uses metadata display and ignores invalid display values", () => {
+    expect(
+      getMessageSurface("agent_message", {
+        metadata: { display: "timeline" },
+      }),
+    ).toBe("timeline");
+    expect(getMessageSurface("agent_message", { display: "unsupported" })).toBe(
+      "chat",
+    );
+  });
+
+  it("keeps transcript event types chat-visible by default", () => {
+    expect(getMessageSurface("ai_message", {})).toBe("chat");
+    expect(getMessageSurface("chat_message", {})).toBe("chat");
   });
 });

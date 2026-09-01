@@ -352,7 +352,11 @@ export function AgentBuilderChat({ agentConfig, onUpdateConfig, availableOptions
               } else if (isMessageDisplayEventType(data.event_type) && messageSurface === "chat") {
                 const displayReply = data.data?.message || data.data?.content || ""
                 const interactions = data.data?.metadata?.interactions
-                if (expectsUserResponse(data.event_type, data.data)) {
+                if (!displayReply) {
+                  return
+                }
+                const waitsForUser = expectsUserResponse(data.event_type, data.data)
+                if (waitsForUser) {
                   setIsLoading(false)
                 }
                 setMessages(prev => {
@@ -365,6 +369,14 @@ export function AgentBuilderChat({ agentConfig, onUpdateConfig, availableOptions
                     ...lastMsg,
                     content: displayReply,
                     interactions: Array.isArray(interactions) ? interactions : lastMsg.interactions
+                  }
+                  if (!waitsForUser) {
+                    updated.push({
+                      role: "assistant",
+                      content: "",
+                      traceEvents: [],
+                      timestamp: Date.now(),
+                    })
                   }
                   return updated
                 })

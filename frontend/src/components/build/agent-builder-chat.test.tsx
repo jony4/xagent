@@ -277,8 +277,24 @@ describe("AgentBuilderChat", () => {
     await waitFor(() => {
       expect(screen.getByText("Ordinary visible update")).toBeInTheDocument()
     })
-    const messages = screen.getAllByTestId("chat-message")
-    expect(messages[messages.length - 1]).toHaveAttribute("data-trace-count", "1")
+    let messages = screen.getAllByTestId("chat-message")
+    expect(messages[messages.length - 2]).toHaveAttribute("data-trace-count", "1")
+
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "ai_message",
+        data: { content: "Final builder answer", display: "chat" },
+      }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText("Ordinary visible update")).toBeInTheDocument()
+      expect(screen.getByText("Final builder answer")).toBeInTheDocument()
+    })
+    messages = screen.getAllByTestId("chat-message")
+    expect(messages[messages.length - 2]).toHaveTextContent("Ordinary visible update")
+    expect(messages[messages.length - 1]).toHaveTextContent("Final builder answer")
   })
 
   it("keeps timeline agent messages out of builder chat content", async () => {
@@ -300,6 +316,30 @@ describe("AgentBuilderChat", () => {
       expect(messages[messages.length - 1]).toHaveAttribute("data-trace-count", "1")
     })
     expect(screen.queryByText("Timeline only")).not.toBeInTheDocument()
+  })
+
+  it("renders waiting questions in builder chat", async () => {
+    renderBuilderChat()
+    fireEvent.click(screen.getByText("send-chat-input"))
+
+    const ws = MockWebSocket.instances[0]
+    ws.open()
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "agent_message",
+        data: {
+          message: "Choose an option",
+          message_type: "question",
+          expect_response: true,
+          display: "chat",
+        },
+      }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText("Choose an option")).toBeInTheDocument()
+    })
   })
 
   it("shows backend upload error details when file upload is unavailable", async () => {

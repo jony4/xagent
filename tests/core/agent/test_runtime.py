@@ -571,6 +571,13 @@ async def test_runtime_send_message_resolves_display_independently_from_waiting(
         message="A compact update", display="timeline"
     )
     hidden = await runtime.send_message(message="Internal", visible=False)
+    hidden_question = await runtime.send_message(
+        message="Required input", expect_response=True, visible=False
+    )
+    invalid_display = await runtime.send_message(
+        message="Fallback message",
+        display={"surface": "timeline"},  # type: ignore[arg-type]
+    )
 
     assert info["display"] == "chat"
     assert info["expect_response"] is False
@@ -578,6 +585,8 @@ async def test_runtime_send_message_resolves_display_independently_from_waiting(
     assert question["expect_response"] is False
     assert explicit_timeline["display"] == "timeline"
     assert hidden["display"] == "ignore"
+    assert hidden_question["display"] == "chat"
+    assert invalid_display["display"] == "chat"
 
 
 @pytest.mark.asyncio

@@ -34,7 +34,7 @@ def resolve_message_display(
         return "chat"
     if not visible:
         return "ignore"
-    if display in MESSAGE_DISPLAYS:
+    if isinstance(display, str) and display in MESSAGE_DISPLAYS:
         return cast(MessageDisplay, display)
     if event_type in FINAL_ANSWER_EVENT_TYPES:
         return "stream"

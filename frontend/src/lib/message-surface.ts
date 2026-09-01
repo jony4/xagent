@@ -37,23 +37,22 @@ export const expectsUserResponse = (
   eventType: string,
   data: unknown,
 ): boolean => {
-  const messageData = data && typeof data === "object"
-    ? data as MessageSurfaceData
-    : undefined;
-  return eventType === "agent_message" && messageData?.expect_response === true;
+  const messageData =
+    data && typeof data === "object" ? (data as MessageSurfaceData) : undefined;
+  return (
+    eventType === "agent_message" &&
+    (messageData?.expect_response === true ||
+      messageData?.message_type === "question")
+  );
 };
 
 export const getMessageSurface = (
   eventType: string,
   data: unknown,
 ): MessageSurface => {
-  const messageData = data && typeof data === "object"
-    ? data as MessageSurfaceData
-    : undefined;
-  if (
-    expectsUserResponse(eventType, messageData) ||
-    messageData?.message_type === "question"
-  ) {
+  const messageData =
+    data && typeof data === "object" ? (data as MessageSurfaceData) : undefined;
+  if (expectsUserResponse(eventType, messageData)) {
     return "chat";
   }
   if (messageData?.visible === false) return "ignore";
@@ -64,7 +63,10 @@ export const getMessageSurface = (
   }
   if (FINAL_ANSWER_EVENT_TYPES.has(eventType)) return "stream";
   if (eventType === "agent_status") return "status";
-  if (eventType === "agent_progress" || messageData?.message_type === "progress") {
+  if (
+    eventType === "agent_progress" ||
+    messageData?.message_type === "progress"
+  ) {
     return "timeline";
   }
   if (

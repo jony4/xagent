@@ -294,6 +294,22 @@ def test_agent_outbound_stream_event_carries_resolved_display() -> None:
         )
         is None
     )
+    invalid_display_event = create_agent_outbound_stream_event(
+        365, {"message": "Fallback", "display": ["timeline"]}
+    )
+    assert invalid_display_event is not None
+    assert invalid_display_event["event_type"] == "agent_message"
+    assert invalid_display_event["data"]["display"] == "chat"
+    assert (
+        create_agent_outbound_stream_event(
+            365,
+            {
+                "type": "final_answer_start",
+                "message_id": "final-answer-1",
+            },
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -420,13 +436,31 @@ def test_persist_agent_outbound_event_uses_payload_ids(monkeypatch) -> None:
     )
 
     _persist_agent_outbound_event(int(task.id), event)
+    legacy_question = create_stream_event(
+        "agent_message",
+        int(task.id),
+        {
+            "event_id": "agent-question-1",
+            "message": "Which option?",
+            "message_type": "question",
+            "expect_response": False,
+        },
+    )
+    _persist_agent_outbound_event(int(task.id), legacy_question)
 
     db = SessionLocal()
     try:
-        trace_event = db.query(DatabaseTraceEvent).filter_by(task_id=int(task.id)).one()
+        trace_event = (
+            db.query(DatabaseTraceEvent)
+            .filter_by(task_id=int(task.id), event_id="agent-event-1")
+            .one()
+        )
         assert trace_event.event_id == "agent-event-1"
         assert trace_event.event_type == "agent_progress"
         assert trace_event.step_id == "react-step-1"
+        chat_message = db.query(TaskChatMessage).filter_by(task_id=int(task.id)).one()
+        assert chat_message.content == "Which option?"
+        assert chat_message.message_type == "question"
     finally:
         db.close()
 

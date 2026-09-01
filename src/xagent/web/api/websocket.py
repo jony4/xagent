@@ -1018,7 +1018,7 @@ def _persist_agent_outbound_event(task_id: int, event: Dict[str, Any]) -> None:
         )
         db.add(trace_event)
 
-        if bool(data.get("expect_response")):
+        if bool(data.get("expect_response")) or data.get("message_type") == "question":
             task = db.query(DatabaseTask).filter(DatabaseTask.id == task_id).first()
             message = str(data.get("message") or "")
             task_user_id = _task_user_id(task) if task else None
@@ -1063,7 +1063,7 @@ def _agent_outbound_display(payload: Dict[str, Any]) -> str:
     metadata_display = metadata.get("display") if isinstance(metadata, dict) else None
     return resolve_message_display(
         display=payload.get("display") or metadata_display,
-        event_type="agent_message",
+        event_type=str(payload.get("type") or "agent_message"),
         message_type=str(payload.get("message_type") or "info"),
         expect_response=bool(payload.get("expect_response")),
         visible=payload.get("visible") is not False,
