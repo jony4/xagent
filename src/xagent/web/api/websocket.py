@@ -10166,27 +10166,10 @@ clarification questions as plain assistant text.
 
         async def send_builder_outbound_message(payload: Dict[str, Any]) -> None:
             """Bridge agent agent-to-user messages to the builder chat socket."""
-            await websocket.send_text(
-                json.dumps(
-                    create_stream_event(
-                        _agent_outbound_event_type(payload),
-                        builder_task_id,
-                        {
-                            "event_id": payload.get("event_id"),
-                            "step_id": payload.get("step_id"),
-                            "execution_id": payload.get("execution_id"),
-                            "message": payload.get("message"),
-                            "message_type": payload.get("message_type", "info"),
-                            "expect_response": bool(
-                                payload.get("expect_response", False)
-                            ),
-                            "visible": bool(payload.get("visible", True)),
-                            "metadata": payload.get("metadata") or {},
-                        },
-                        event_id=payload.get("event_id"),
-                    )
-                )
-            )
+            event = create_agent_outbound_stream_event(builder_task_id, payload)
+            if event is None:
+                return
+            await websocket.send_text(json.dumps(event))
 
         llm = runtime_inputs.llm
         compact_llm = runtime_inputs.compact_llm

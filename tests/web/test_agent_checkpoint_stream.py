@@ -248,6 +248,16 @@ def test_agent_outbound_event_type_separates_progress_from_questions() -> None:
         )
         == "agent_progress"
     )
+    assert (
+        _agent_outbound_event_type(
+            {
+                "message": "Need input",
+                "message_type": "info",
+                "expect_response": True,
+            }
+        )
+        == "agent_message"
+    )
 
 
 def test_agent_outbound_stream_event_carries_resolved_display() -> None:
@@ -264,19 +274,25 @@ def test_agent_outbound_stream_event_carries_resolved_display() -> None:
     assert timeline_event is not None
     assert timeline_event["event_type"] == "agent_progress"
     assert timeline_event["data"]["display"] == "timeline"
+    metadata_timeline_event = create_agent_outbound_stream_event(
+        365,
+        {
+            "message": "Metadata progress",
+            "metadata": {"display": "timeline"},
+        },
+    )
+    assert metadata_timeline_event is not None
+    assert metadata_timeline_event["event_type"] == "agent_progress"
+    assert metadata_timeline_event["data"]["display"] == "timeline"
     assert (
         create_agent_outbound_stream_event(365, {"message": "Hidden", "visible": False})
         is None
     )
     assert (
-        _agent_outbound_event_type(
-            {
-                "message": "Need input",
-                "message_type": "info",
-                "expect_response": True,
-            }
+        create_agent_outbound_stream_event(
+            365, {"message": "Ignored", "display": "ignore"}
         )
-        == "agent_message"
+        is None
     )
 
 
