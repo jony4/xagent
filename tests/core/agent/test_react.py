@@ -4516,6 +4516,7 @@ async def test_react_pattern_send_message_without_response_continues() -> None:
     assert outbound_message["message_type"] == "progress"
     assert outbound_message["expect_response"] is False
     assert outbound_message["visible"] is True
+    assert outbound_message["display"] == "timeline"
     assert outbound_message["step_id"] == outbound_message["metadata"]["step_id"]
     tool_messages = context.get_messages_by_role("tool")
     assert len(tool_messages) == 1
@@ -4560,6 +4561,7 @@ async def test_react_pattern_send_message_with_response_waits() -> None:
     assert sent_messages == runtime.outbound_messages
     assert sent_messages[0]["message"] == "Choose A or B"
     assert sent_messages[0]["expect_response"] is True
+    assert sent_messages[0]["display"] == "chat"
     assert pattern.status == "waiting_for_user"
     tool_messages = context.get_messages_by_role("tool")
     assert tool_messages[0].tool_call_id == "call_question"
@@ -4605,6 +4607,7 @@ async def test_react_pattern_ask_user_question_pauses_with_structured_payload() 
     assert outbound_message["message_type"] == "question"
     assert outbound_message["expect_response"] is True
     assert outbound_message["visible"] is True
+    assert outbound_message["display"] == "chat"
     assert outbound_message["step_id"] == outbound_message["metadata"]["step_id"]
     assert outbound_message["metadata"]["interactions"] == [
         {
