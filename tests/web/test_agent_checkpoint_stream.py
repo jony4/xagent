@@ -37,6 +37,7 @@ from xagent.web.api.websocket import (
     _is_agent_checkpoint_data,
     _is_duplicate_user_message_turn,
     _persist_agent_outbound_event,
+    create_agent_outbound_stream_event,
     create_final_answer_stream_event,
     create_stream_event,
     make_agent_outbound_handler,
@@ -210,6 +211,16 @@ def test_agent_outbound_event_type_separates_progress_from_questions() -> None:
     assert (
         _agent_outbound_event_type(
             {
+                "message": "An ordinary update",
+                "message_type": "info",
+                "expect_response": False,
+            }
+        )
+        == "agent_message"
+    )
+    assert (
+        _agent_outbound_event_type(
+            {
                 "message": "Still working",
                 "message_type": "progress",
                 "expect_response": False,
@@ -226,6 +237,36 @@ def test_agent_outbound_event_type_separates_progress_from_questions() -> None:
             }
         )
         == "agent_message"
+    )
+    assert (
+        _agent_outbound_event_type(
+            {
+                "message": "Timeline narration",
+                "message_type": "info",
+                "display": "timeline",
+            }
+        )
+        == "agent_progress"
+    )
+
+
+def test_agent_outbound_stream_event_carries_resolved_display() -> None:
+    chat_event = create_agent_outbound_stream_event(
+        365, {"message": "Visible update", "message_type": "info"}
+    )
+    timeline_event = create_agent_outbound_stream_event(
+        365, {"message": "Progress", "message_type": "progress"}
+    )
+
+    assert chat_event is not None
+    assert chat_event["event_type"] == "agent_message"
+    assert chat_event["data"]["display"] == "chat"
+    assert timeline_event is not None
+    assert timeline_event["event_type"] == "agent_progress"
+    assert timeline_event["data"]["display"] == "timeline"
+    assert (
+        create_agent_outbound_stream_event(365, {"message": "Hidden", "visible": False})
+        is None
     )
     assert (
         _agent_outbound_event_type(

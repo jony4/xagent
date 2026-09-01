@@ -229,6 +229,7 @@ class _AutoChildRuntime:
         message_type: str = "info",
         expect_response: bool = False,
         visible: bool = True,
+        display: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self.parent.send_message(
@@ -236,6 +237,7 @@ class _AutoChildRuntime:
             message_type=message_type,
             expect_response=expect_response,
             visible=visible,
+            display=display,
             metadata=metadata,
         )
 

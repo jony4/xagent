@@ -127,6 +127,7 @@ vi.mock("@/components/chat/ChatMessage", () => ({
         data-process-status={processStatus || ""}
         data-trace-count={traceEvents?.length ?? 0}
       >
+        <span data-testid="chat-content">{content}</span>
         <button
           type="button"
           onClick={async () => {
@@ -252,6 +253,53 @@ describe("AgentBuilderChat", () => {
   afterEach(() => {
     cleanup()
     globalThis.WebSocket = originalWebSocket
+  })
+
+  it("renders ordinary agent messages in chat without requiring a response", async () => {
+    renderBuilderChat()
+    fireEvent.click(screen.getByText("send-chat-input"))
+
+    const ws = MockWebSocket.instances[0]
+    ws.open()
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "agent_message",
+        data: {
+          message: "Ordinary visible update",
+          message_type: "info",
+          expect_response: false,
+          display: "chat",
+        },
+      }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText("Ordinary visible update")).toBeInTheDocument()
+    })
+    const messages = screen.getAllByTestId("chat-message")
+    expect(messages[messages.length - 1]).toHaveAttribute("data-trace-count", "1")
+  })
+
+  it("keeps timeline agent messages out of builder chat content", async () => {
+    renderBuilderChat()
+    fireEvent.click(screen.getByText("send-chat-input"))
+
+    const ws = MockWebSocket.instances[0]
+    ws.open()
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "agent_message",
+        data: { message: "Timeline only", display: "timeline" },
+      }),
+    })
+
+    await waitFor(() => {
+      const messages = screen.getAllByTestId("chat-message")
+      expect(messages[messages.length - 1]).toHaveAttribute("data-trace-count", "1")
+    })
+    expect(screen.queryByText("Timeline only")).not.toBeInTheDocument()
   })
 
   it("shows backend upload error details when file upload is unavailable", async () => {

@@ -53,6 +53,7 @@ from ...core.agent.checkpoint import (
     CheckpointReadError,
     CheckpointUnavailableError,
 )
+from ...core.agent.message_display import resolve_message_display
 from ...core.agent.runner import UserMessageInjectionOutcome
 from ...core.agent.trace import TraceEvent, TraceHandler
 from ...core.execution_scope import (
@@ -1049,10 +1050,51 @@ def _persist_agent_outbound_event(task_id: int, event: Dict[str, Any]) -> None:
 
 
 def _agent_outbound_event_type(payload: Dict[str, Any]) -> str:
-    message_type = str(payload.get("message_type") or "info")
-    if bool(payload.get("expect_response")) or message_type == "question":
-        return "agent_message"
-    return "agent_progress"
+    display = _agent_outbound_display(payload)
+    if display == "timeline":
+        return "agent_progress"
+    if display == "status":
+        return "agent_status"
+    return "agent_message"
+
+
+def _agent_outbound_display(payload: Dict[str, Any]) -> str:
+    metadata = payload.get("metadata")
+    metadata_display = metadata.get("display") if isinstance(metadata, dict) else None
+    return resolve_message_display(
+        display=payload.get("display") or metadata_display,
+        event_type="agent_message",
+        message_type=str(payload.get("message_type") or "info"),
+        expect_response=bool(payload.get("expect_response")),
+        visible=payload.get("visible") is not False,
+    )
+
+
+def create_agent_outbound_stream_event(
+    task_id: int, payload: Dict[str, Any]
+) -> Dict[str, Any] | None:
+    """Build one normalized UI event for a runtime outbound message."""
+
+    display = _agent_outbound_display(payload)
+    if display in {"ignore", "stream"}:
+        return None
+    event_type = _agent_outbound_event_type(payload)
+    return create_stream_event(
+        event_type,
+        task_id,
+        {
+            "event_id": payload.get("event_id"),
+            "step_id": payload.get("step_id"),
+            "execution_id": payload.get("execution_id"),
+            "message": payload.get("message"),
+            "message_type": payload.get("message_type", "info"),
+            "expect_response": bool(payload.get("expect_response", False)),
+            "display": display,
+            "visible": bool(payload.get("visible", True)),
+            "metadata": payload.get("metadata") or {},
+        },
+        event_id=payload.get("event_id"),
+    )
 
 
 def _reconcile_streamed_final_answer(task_id: int, content: str) -> str:
@@ -1102,26 +1144,9 @@ def make_agent_outbound_handler(task_id: int) -> Any:
             )
             return
 
-        if payload.get("visible") is False:
+        event = create_agent_outbound_stream_event(task_id, payload)
+        if event is None:
             return
-
-        event_type = _agent_outbound_event_type(payload)
-        event = create_stream_event(
-            event_type,
-            task_id,
-            {
-                "event_id": payload.get("event_id"),
-                "step_id": payload.get("step_id"),
-                "execution_id": payload.get("execution_id"),
-                "message": payload.get("message"),
-                "message_type": payload.get("message_type", "info"),
-                "expect_response": bool(payload.get("expect_response", False)),
-                "display": "chat" if event_type == "agent_message" else "timeline",
-                "visible": bool(payload.get("visible", True)),
-                "metadata": payload.get("metadata") or {},
-            },
-            event_id=payload.get("event_id"),
-        )
         await asyncio.to_thread(_persist_agent_outbound_event, task_id, event)
         await manager.broadcast_to_task(event, task_id)
 

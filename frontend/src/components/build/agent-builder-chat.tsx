@@ -15,6 +15,7 @@ import { useI18n } from "@/contexts/i18n-context"
 import { toast } from "@/components/ui/sonner"
 import { getBrandingFromEnv } from "@/lib/branding"
 import { normalizeUploadFileIds } from "@/lib/upload-file-ids"
+import { expectsUserResponse, getMessageSurface, isMessageDisplayEventType } from "@/lib/message-surface"
 
 import { Interaction } from "@/contexts/app-context-chat"
 
@@ -282,6 +283,12 @@ export function AgentBuilderChat({ agentConfig, onUpdateConfig, availableOptions
             const data = JSON.parse(event.data)
 
             if (data.type === "trace_event") {
+              const messageSurface = isMessageDisplayEventType(data.event_type)
+                ? getMessageSurface(data.event_type, data.data)
+                : null
+              if (messageSurface === "ignore") {
+                return
+              }
               // Update the last message (assistant) with the new trace event
               setMessages(prev => {
                 return updateLastAssistantMessage(prev, lastMsg => ({
@@ -290,7 +297,7 @@ export function AgentBuilderChat({ agentConfig, onUpdateConfig, availableOptions
                 }))
               })
 
-              if (data.event_type === "ai_message") {
+              if (data.event_type === "ai_message" && messageSurface === "chat") {
                 if (data.data?.message_type === "reasoning") {
                   // Do not update the main message content for reasoning.
                   // TraceEventRenderer will handle displaying it in the execution logs.
@@ -342,13 +349,12 @@ export function AgentBuilderChat({ agentConfig, onUpdateConfig, availableOptions
                     return updated
                   })
                 }
-              } else if (data.event_type === "agent_message") {
-                const displayReply = data.data?.message || ""
+              } else if (isMessageDisplayEventType(data.event_type) && messageSurface === "chat") {
+                const displayReply = data.data?.message || data.data?.content || ""
                 const interactions = data.data?.metadata?.interactions
-                if (!data.data?.expect_response && data.data?.message_type !== "question") {
-                  return
+                if (expectsUserResponse(data.event_type, data.data)) {
+                  setIsLoading(false)
                 }
-                setIsLoading(false)
                 setMessages(prev => {
                   const updated = [...prev]
                   const lastMsg = updated[updated.length - 1]

@@ -2151,6 +2151,10 @@ class ReActPattern(AgentPattern):
                             },
                             "expect_response": {"type": "boolean"},
                             "visible": {"type": "boolean"},
+                            "display": {
+                                "type": "string",
+                                "enum": ["chat", "timeline"],
+                            },
                         },
                         "required": ["message"],
                     },
@@ -2341,11 +2345,13 @@ class ReActPattern(AgentPattern):
             expect_response = bool(args.get("expect_response", False))
             message_type = str(args.get("message_type", "info"))
             visible = bool(args.get("visible", True))
+            display = args.get("display")
             outbound_message = await runtime.send_message(
                 message=message,
                 message_type=message_type,
                 expect_response=expect_response,
                 visible=visible,
+                display=str(display) if display is not None else None,
             )
             self._record_tool_call(
                 tool_call,
@@ -2431,6 +2437,7 @@ class ReActPattern(AgentPattern):
                 message_type="question",
                 expect_response=True,
                 visible=True,
+                display="chat",
                 metadata={"interactions": interactions},
             )
             self._record_tool_call(
@@ -2752,6 +2759,7 @@ class ReActPattern(AgentPattern):
             message_type=message_type,
             expect_response=True,
             visible=True,
+            display="chat",
             metadata={"interactions": interactions},
         )
         self.status = "waiting_for_user"
