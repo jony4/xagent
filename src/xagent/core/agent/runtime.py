@@ -753,7 +753,9 @@ class PatternRuntime:
 
         outbound_metadata = dict(metadata or {})
         resolved_display = resolve_message_display(
-            display=display or outbound_metadata.get("display"),
+            display=(
+                display if display is not None else outbound_metadata.get("display")
+            ),
             event_type="agent_message",
             message_type=message_type,
             expect_response=expect_response,

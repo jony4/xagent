@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
+import contractCases from "../../../tests/fixtures/message_surface_contract.json";
 import { expectsUserResponse, getMessageSurface } from "./message-surface";
+
+describe("shared backend/frontend message surface fixtures", () => {
+  it.each(contractCases)("$name", testCase => {
+    expect(getMessageSurface(testCase.event_type, testCase.data)).toBe(
+      testCase.surface,
+    );
+    expect(expectsUserResponse(testCase.event_type, testCase.data)).toBe(
+      testCase.expects_response,
+    );
+  });
+});
 
 describe("message surface contract", () => {
   it("keeps ordinary agent messages in chat without waiting", () => {
@@ -25,12 +37,12 @@ describe("message surface contract", () => {
     expect(getMessageSurface("final_answer_delta", {})).toBe("stream");
   });
 
-  it("keeps questions visible and preserves legacy question waiting", () => {
-    const legacyQuestion = { message_type: "question", expect_response: false };
+  it("keeps questions visible but waits only on the explicit flag", () => {
+    const nonWaitingQuestion = { message_type: "question", expect_response: false };
     const waitingQuestion = { message_type: "question", expect_response: true };
 
-    expect(getMessageSurface("agent_message", legacyQuestion)).toBe("chat");
-    expect(expectsUserResponse("agent_message", legacyQuestion)).toBe(true);
+    expect(getMessageSurface("agent_message", nonWaitingQuestion)).toBe("chat");
+    expect(expectsUserResponse("agent_message", nonWaitingQuestion)).toBe(false);
     expect(expectsUserResponse("agent_message", waitingQuestion)).toBe(true);
     expect(
       getMessageSurface("agent_message", {
@@ -43,6 +55,13 @@ describe("message surface contract", () => {
   it("honors hidden messages before any display hint", () => {
     expect(
       getMessageSurface("agent_message", { visible: false, display: "chat" }),
+    ).toBe("ignore");
+    expect(
+      getMessageSurface("agent_message", {
+        message_type: "question",
+        expect_response: false,
+        visible: false,
+      }),
     ).toBe("ignore");
   });
 
@@ -60,5 +79,15 @@ describe("message surface contract", () => {
   it("keeps transcript event types chat-visible by default", () => {
     expect(getMessageSurface("ai_message", {})).toBe("chat");
     expect(getMessageSurface("chat_message", {})).toBe("chat");
+    expect(getMessageSurface("user_message", {})).toBe("chat");
+  });
+
+  it("does not apply agent waiting precedence to other event types", () => {
+    expect(
+      getMessageSurface("ai_message", {
+        display: "timeline",
+        expect_response: true,
+      }),
+    ).toBe("timeline");
   });
 });

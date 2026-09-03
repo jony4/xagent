@@ -3013,6 +3013,16 @@ export function AppProvider({
             dispatch({ type: "UPSERT_STREAMING_FINAL_ANSWER", payload })
           }
 
+          // These surfaces are handled outside the ordinary message router.
+          // Keeping an explicit guard prevents malformed/direct frames from
+          // falling through into the generic trace-event fallback.
+          else if (
+            isMessageDisplayEventType(eventType) &&
+            ["ignore", "stream"].includes(getMessageSurface(eventType, eventData))
+          ) {
+            return
+          }
+
           // Agent progress messages belong in the execution timeline, not the chat transcript.
           else if (
             isMessageDisplayEventType(eventType) &&

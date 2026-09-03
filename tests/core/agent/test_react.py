@@ -4530,6 +4530,47 @@ async def test_react_pattern_send_message_without_response_continues() -> None:
 
 
 @pytest.mark.asyncio
+async def test_react_pattern_send_message_rejects_internal_display_values(
+    caplog,
+) -> None:
+    llm = FakeLLM(
+        responses=[
+            {
+                "tool_calls": [
+                    {
+                        "id": "call_message",
+                        "function": {
+                            "name": "send_message",
+                            "arguments": '{"message":"Still working","display":"ignore"}',
+                        },
+                    }
+                ],
+            },
+            {"content": "All done."},
+        ]
+    )
+    pattern = ReActPattern(max_iterations=3)
+    runtime = PatternRuntime()
+    context = ExecutionContext()
+    context.add_user_message("Work")
+
+    with caplog.at_level(
+        logging.WARNING, logger="xagent.core.agent.pattern.react.react"
+    ):
+        result = await pattern.run(context=context, tools=[], llm=llm, runtime=runtime)
+
+    assert result["success"] is True
+    assert len(runtime.outbound_messages) == 1
+    assert runtime.outbound_messages[0]["message"] == "Still working"
+    assert runtime.outbound_messages[0]["display"] == "chat"
+    assert "unsupported send_message display value" in caplog.text
+
+    tool_messages = context.get_messages_by_role("tool")
+    assert len(tool_messages) == 1
+    assert tool_messages[0].metadata["raw_result"]["display"] == "chat"
+
+
+@pytest.mark.asyncio
 async def test_react_pattern_send_message_with_response_waits() -> None:
     llm = FakeLLM(
         responses=[

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Literal, cast
+
+logger = logging.getLogger(__name__)
 
 MessageDisplay = Literal["chat", "timeline", "status", "stream", "ignore"]
 
@@ -30,18 +33,25 @@ def resolve_message_display(
     without an explicit display retain their established semantic defaults.
     """
 
-    if expect_response or message_type == "question":
+    # A real waiting prompt must stay actionable even when a producer also
+    # supplied a contradictory visibility hint. ``message_type`` is only
+    # presentation metadata; ReAct suspends exclusively on expect_response.
+    if event_type == "agent_message" and expect_response:
         return "chat"
     if not visible:
         return "ignore"
     if isinstance(display, str) and display in MESSAGE_DISPLAYS:
         return cast(MessageDisplay, display)
+    if display is not None:
+        logger.warning("Ignoring unsupported message display value: %r", display)
     if event_type in FINAL_ANSWER_EVENT_TYPES:
         return "stream"
     if event_type == "agent_status":
         return "status"
     if event_type == "agent_progress" or message_type == "progress":
         return "timeline"
+    if event_type == "agent_message" and message_type == "question":
+        return "chat"
     if event_type in {
         "agent_message",
         "ai_message",

@@ -53,7 +53,10 @@ from ...core.agent.checkpoint import (
     CheckpointReadError,
     CheckpointUnavailableError,
 )
-from ...core.agent.message_display import resolve_message_display
+from ...core.agent.message_display import (
+    FINAL_ANSWER_EVENT_TYPES,
+    resolve_message_display,
+)
 from ...core.agent.runner import UserMessageInjectionOutcome
 from ...core.agent.trace import TraceEvent, TraceHandler
 from ...core.execution_scope import (
@@ -1018,7 +1021,7 @@ def _persist_agent_outbound_event(task_id: int, event: Dict[str, Any]) -> None:
         )
         db.add(trace_event)
 
-        if bool(data.get("expect_response")) or data.get("message_type") == "question":
+        if bool(data.get("expect_response")):
             task = db.query(DatabaseTask).filter(DatabaseTask.id == task_id).first()
             message = str(data.get("message") or "")
             task_user_id = _task_user_id(task) if task else None
@@ -1062,7 +1065,11 @@ def _agent_outbound_display(payload: Dict[str, Any]) -> str:
     metadata = payload.get("metadata")
     metadata_display = metadata.get("display") if isinstance(metadata, dict) else None
     return resolve_message_display(
-        display=payload.get("display") or metadata_display,
+        display=(
+            payload.get("display")
+            if payload.get("display") is not None
+            else metadata_display
+        ),
         event_type=str(payload.get("type") or "agent_message"),
         message_type=str(payload.get("message_type") or "info"),
         expect_response=bool(payload.get("expect_response")),
@@ -1118,37 +1125,56 @@ def _reconcile_streamed_final_answer(task_id: int, content: str) -> str:
         db.close()
 
 
+async def deliver_agent_outbound_message(
+    *,
+    task_id: int,
+    payload: Dict[str, Any],
+    send_event: Any,
+    persist_event: bool,
+    reconcile_final_answer: bool,
+) -> Dict[str, Any] | None:
+    """Normalize and deliver one runtime outbound payload to a UI transport."""
+
+    payload_type = str(payload.get("type") or "")
+    event: Dict[str, Any] | None
+    if payload_type in FINAL_ANSWER_EVENT_TYPES:
+        if (
+            reconcile_final_answer
+            and payload_type == "final_answer_end"
+            and isinstance(payload.get("content"), str)
+        ):
+            payload = dict(payload)
+            payload["content"] = await asyncio.to_thread(
+                _reconcile_streamed_final_answer,
+                task_id,
+                str(payload["content"]),
+            )
+        event = create_final_answer_stream_event(payload_type, task_id, dict(payload))
+    else:
+        event = create_agent_outbound_stream_event(task_id, payload)
+    if event is None:
+        return None
+    if persist_event and payload_type not in FINAL_ANSWER_EVENT_TYPES:
+        await asyncio.to_thread(_persist_agent_outbound_event, task_id, event)
+
+    await send_event(event)
+    return event
+
+
 def make_agent_outbound_handler(task_id: int) -> Any:
     """Create a web bridge for agent agent-to-user messages."""
 
     async def handle_outbound_message(payload: Dict[str, Any]) -> None:
-        payload_type = str(payload.get("type") or "")
-        if payload_type in {
-            "final_answer_start",
-            "final_answer_delta",
-            "final_answer_end",
-            "final_answer_error",
-        }:
-            if payload_type == "final_answer_end" and isinstance(
-                payload.get("content"), str
-            ):
-                payload = dict(payload)
-                payload["content"] = await asyncio.to_thread(
-                    _reconcile_streamed_final_answer,
-                    task_id,
-                    str(payload["content"]),
-                )
-            await manager.broadcast_to_task(
-                create_final_answer_stream_event(payload_type, task_id, dict(payload)),
-                task_id,
-            )
-            return
+        async def send_event(event: Dict[str, Any]) -> None:
+            await manager.broadcast_to_task(event, task_id)
 
-        event = create_agent_outbound_stream_event(task_id, payload)
-        if event is None:
-            return
-        await asyncio.to_thread(_persist_agent_outbound_event, task_id, event)
-        await manager.broadcast_to_task(event, task_id)
+        await deliver_agent_outbound_message(
+            task_id=task_id,
+            payload=payload,
+            send_event=send_event,
+            persist_event=True,
+            reconcile_final_answer=True,
+        )
 
     return handle_outbound_message
 
@@ -7898,7 +7924,13 @@ def _load_historical_stream_snapshot_sync(
                                 ("user", content.strip(), attachment_key)
                             )
                     elif (
-                        trace_event.event_type in {"agent_message", "ai_message"}
+                        (
+                            trace_event.event_type == "ai_message"
+                            or (
+                                trace_event.event_type == "agent_message"
+                                and normalized_event_data.get("expect_response") is True
+                            )
+                        )
                         and isinstance(content, str)
                         and content.strip()
                     ):
@@ -10166,10 +10198,17 @@ clarification questions as plain assistant text.
 
         async def send_builder_outbound_message(payload: Dict[str, Any]) -> None:
             """Bridge agent agent-to-user messages to the builder chat socket."""
-            event = create_agent_outbound_stream_event(builder_task_id, payload)
-            if event is None:
-                return
-            await websocket.send_text(json.dumps(event))
+
+            async def send_event(event: Dict[str, Any]) -> None:
+                await websocket.send_text(json.dumps(event))
+
+            await deliver_agent_outbound_message(
+                task_id=builder_task_id,
+                payload=payload,
+                send_event=send_event,
+                persist_event=False,
+                reconcile_final_answer=False,
+            )
 
         llm = runtime_inputs.llm
         compact_llm = runtime_inputs.compact_llm

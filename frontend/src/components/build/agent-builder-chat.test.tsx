@@ -297,6 +297,139 @@ describe("AgentBuilderChat", () => {
     expect(messages[messages.length - 1]).toHaveTextContent("Final builder answer")
   })
 
+  it("preserves a final answer when a non-waiting message arrives afterwards", async () => {
+    renderBuilderChat()
+    fireEvent.click(screen.getByText("send-chat-input"))
+
+    const ws = MockWebSocket.instances[0]
+    ws.open()
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "ai_message",
+        data: { content: "Final answer first", display: "chat" },
+      }),
+    })
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "agent_message",
+        data: {
+          message: "Late durable note",
+          expect_response: false,
+          display: "chat",
+        },
+      }),
+    })
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "task_completed",
+        status: "completed",
+        result: { content: "Final answer first" },
+      }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText("Final answer first")).toBeInTheDocument()
+      expect(screen.getByText("Late durable note")).toBeInTheDocument()
+    })
+    expect(screen.getAllByText("Final answer first")).toHaveLength(1)
+  })
+
+  it("renders native final-answer stream events from the builder bridge", async () => {
+    renderBuilderChat()
+    fireEvent.click(screen.getByText("send-chat-input"))
+
+    const ws = MockWebSocket.instances[0]
+    ws.open()
+    for (const event of [
+      { type: "final_answer_start", message_id: "answer-1" },
+      { type: "final_answer_delta", message_id: "answer-1", delta: "Streamed " },
+      { type: "final_answer_delta", message_id: "answer-1", delta: "answer" },
+      { type: "final_answer_end", message_id: "answer-1", content: "Streamed answer" },
+    ]) {
+      ws.onmessage?.({ data: JSON.stringify(event) })
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("Streamed answer")).toBeInTheDocument()
+    })
+    expect(screen.getAllByText("Streamed answer")).toHaveLength(1)
+  })
+
+  it("keeps each streamed final answer inside its own user turn", async () => {
+    renderBuilderChat()
+    fireEvent.click(screen.getByText("send-chat-input"))
+
+    const ws = MockWebSocket.instances[0]
+    ws.open()
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "ai_message",
+        data: { content: "First answer", display: "chat" },
+      }),
+    })
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "task_completed",
+        status: "completed",
+        result: { content: "First answer" },
+      }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText("First answer")).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText("send-chat-input"))
+    for (const event of [
+      { type: "final_answer_start", message_id: "answer-2" },
+      { type: "final_answer_delta", message_id: "answer-2", delta: "Second answer" },
+      { type: "final_answer_end", message_id: "answer-2", content: "Second answer" },
+    ]) {
+      ws.onmessage?.({ data: JSON.stringify(event) })
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("First answer")).toBeInTheDocument()
+      expect(screen.getByText("Second answer")).toBeInTheDocument()
+    })
+  })
+
+  it("removes an empty completion placeholder after a durable message", async () => {
+    renderBuilderChat()
+    fireEvent.click(screen.getByText("send-chat-input"))
+
+    const ws = MockWebSocket.instances[0]
+    ws.open()
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "trace_event",
+        event_type: "agent_message",
+        data: {
+          message: "Only durable update",
+          expect_response: false,
+          display: "chat",
+        },
+      }),
+    })
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "task_completed",
+        status: "completed",
+        result: "",
+      }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText("Only durable update")).toBeInTheDocument()
+      expect(screen.getAllByTestId("chat-message")).toHaveLength(3)
+    })
+    expect(
+      screen.queryByText("builds.configForm.chat.defaultReply"),
+    ).not.toBeInTheDocument()
+  })
+
   it("keeps timeline agent messages out of builder chat content", async () => {
     renderBuilderChat()
     fireEvent.click(screen.getByText("send-chat-input"))

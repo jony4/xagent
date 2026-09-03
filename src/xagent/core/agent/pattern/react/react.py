@@ -2154,6 +2154,11 @@ class ReActPattern(AgentPattern):
                             "display": {
                                 "type": "string",
                                 "enum": ["chat", "timeline"],
+                                "description": (
+                                    "Where to render this message. Use chat for "
+                                    "durable user-facing information and timeline "
+                                    "for transient execution progress."
+                                ),
                             },
                         },
                         "required": ["message"],
@@ -2345,13 +2350,24 @@ class ReActPattern(AgentPattern):
             expect_response = bool(args.get("expect_response", False))
             message_type = str(args.get("message_type", "info"))
             visible = bool(args.get("visible", True))
-            display = args.get("display")
+            requested_display = args.get("display")
+            display = (
+                requested_display
+                if isinstance(requested_display, str)
+                and requested_display in {"chat", "timeline"}
+                else None
+            )
+            if requested_display is not None and display is None:
+                logger.warning(
+                    "Ignoring unsupported send_message display value: %r",
+                    requested_display,
+                )
             outbound_message = await runtime.send_message(
                 message=message,
                 message_type=message_type,
                 expect_response=expect_response,
                 visible=visible,
-                display=str(display) if display is not None else None,
+                display=display,
             )
             self._record_tool_call(
                 tool_call,
@@ -2360,6 +2376,7 @@ class ReActPattern(AgentPattern):
                     "message": message,
                     "expect_response": expect_response,
                     "visible": visible,
+                    "display": outbound_message["display"],
                 },
             )
             if expect_response:
@@ -2396,7 +2413,11 @@ class ReActPattern(AgentPattern):
                 }
             context.add_tool_result(
                 tool_name=name,
-                result={"message": message, "status": "sent"},
+                result={
+                    "message": message,
+                    "status": "sent",
+                    "display": outbound_message["display"],
+                },
                 tool_call_id=tool_call.get("id"),
             )
             return {

@@ -31,6 +31,7 @@ export const isMessageDisplayEventType = (eventType: string): boolean =>
     "agent_status",
     "ai_message",
     "chat_message",
+    "user_message",
   ].includes(eventType);
 
 export const expectsUserResponse = (
@@ -41,8 +42,7 @@ export const expectsUserResponse = (
     data && typeof data === "object" ? (data as MessageSurfaceData) : undefined;
   return (
     eventType === "agent_message" &&
-    (messageData?.expect_response === true ||
-      messageData?.message_type === "question")
+    messageData?.expect_response === true
   );
 };
 
@@ -68,6 +68,12 @@ export const getMessageSurface = (
     messageData?.message_type === "progress"
   ) {
     return "timeline";
+  }
+  if (
+    eventType === "agent_message" &&
+    messageData?.message_type === "question"
+  ) {
+    return "chat";
   }
   if (
     ["agent_message", "ai_message", "chat_message", "user_message"].includes(
